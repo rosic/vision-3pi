@@ -10,18 +10,21 @@ require 'pp'
 
 Dotenv.load
 API_URL = "https://vision.googleapis.com/v1/images:annotate"
-#API_DISCOVERY_FILE = "https://vision.googleapis.com/$discovery/rest?version=v1"
-#scopes =  ["https://www.googleapis.com/auth/cloud-platform"]
-#authorization = Google::Auth.get_application_default(scopes)
-#require 'pry'; binding.pry
+API_DISCOVERY_FILE = "https://vision.googleapis.com/$discovery/rest?version=v1"
 
 def api_url
-  "#{API_URL}?key=#{ENV["API_KEY"]}"
+  API_URL
+end
+
+def authorization
+  # requires GOOGLE_APPLICATION_CREDENTIALS env variable
+  # to point to json file with credentials
+  scopes =  ["https://www.googleapis.com/auth/cloud-platform"]
+  Google::Auth.get_application_default(scopes)
 end
 
 def client
   @client ||= Faraday.new(url: api_url) do |faraday|
-    #faraday.request(:url_encoded)
     faraday.response :logger
     faraday.adapter(Faraday.default_adapter)
   end
@@ -34,26 +37,8 @@ def image_content(url)
 end
 
 def source_image_urls
-  # 1st set
-  #http://media.expedia.com/hotels/2000000/1420000/1410600/1410527/1410527_102_b.jpg
-  #http://media.expedia.com/hotels/2000000/1420000/1410600/1410527/1410527_28_b.jpg
-  #http://media.expedia.com/hotels/2000000/1420000/1410600/1410527/1410527_92_b.jpg
-  # 2nd set
-  #http://media.expedia.com/hotels/1000000/20000/18000/17912/17912_299_b.jpg
-  #http://media.expedia.com/hotels/1000000/20000/18000/17912/17912_287_b.jpg
-  #http://media.expedia.com/hotels/1000000/20000/18000/17912/17912_289_b.jpg
-  #http://media.expedia.com/hotels/1000000/20000/18000/17912/17912_285_b.jpg
-  #http://media.expedia.com/hotels/1000000/20000/18000/17912/17912_335_b.jpg
-  #http://media.expedia.com/hotels/1000000/20000/18000/17912/17912_365_b.jpg
-  # 3rd set
   %w(
-  http://media.expedia.com/hotels/1000000/890000/889800/889785/889785_90_b.jpg
-  http://media.expedia.com/hotels/1000000/890000/889800/889785/889785_75_b.jpg
-  http://media.expedia.com/hotels/1000000/890000/889800/889785/889785_73_b.jpg
-  http://media.expedia.com/hotels/1000000/890000/889800/889785/889785_81_b.jpg
-  http://media.expedia.com/hotels/1000000/890000/889800/889785/889785_87_b.jpg
-  http://media.expedia.com/hotels/1000000/890000/889800/889785/889785_78_b.jpg
-  http://s3.amazonaws.com/ht_images_staging/deploy@ip-172-31-10-187_172.31.10.187/attachments/files/504006/original.jpg?1455858891
+  http://media.expedia.com/hotels/1000000/20000/10500/10422/10422_205_b.jpg
   )
 end
 
@@ -65,6 +50,9 @@ def image_request(souce_imageurl)
     features: [
       {
         type: "LABEL_DETECTION",
+      },
+      {
+        type: "SAFE_SEARCH_DETECTION",
       }
     ],
   }
@@ -81,14 +69,21 @@ def analyze(body)
     request.body = JSON.dump(body)
     request.headers["Content-Type".freeze] = "application/json".freeze
     request.headers["Accept".freeze] = "application/json".freeze
-    #authorization.apply(request.headers)
+    authorization.apply!(request.headers)
   end
 
   if response.success?
     JSON.parse(response.body)
   else
-    response.body
+    raise response.body
   end
 end
 
-pp analyze(body)
+res = analyze(body)
+pp res
+
+if ARGV.first == "save"
+  results = JSON.load(File.read("results.json")) || {}
+  results.merge!(Hash[source_image_urls.zip(res["responses"])])
+  File.write("results.json", JSON.dump(results))
+end
